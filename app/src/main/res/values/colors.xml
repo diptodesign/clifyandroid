@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="clify_green">#FFA3E635</color>
-    <color name="clify_green_dim">#1AA3E635</color>
+    <color name="clify_green">#FFE6A335</color>
+    <color name="clify_green_dim">#1AE6A335</color>
     <color name="dark_bg">#FF0A0A0F</color>
     <color name="dark_card">#FF141420</color>
     <color name="dark_surface">#FF1E1E2E</color>
@@ -9,7 +9,7 @@
     <color name="dark_text_secondary">#FFA1A1AA</color>
     <color name="dark_border">#FF2A2A3C</color>
     <color name="status_idle">#FF3B82F6</color>
-    <color name="status_progress">#FFFFA3E635</color>
+    <color name="status_progress">#FFE6A335</color>
     <color name="status_done">#FF22C55E</color>
     <color name="status_error">#FFEF4444</color>
     <color name="white">#FFFFFFFF</color>
