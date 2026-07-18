@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.util.Log
+import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -152,10 +153,15 @@ class PatchEngine(private val context: Context) {
     }
 
     fun installApk(apkFile: File) {
-        val uri = Uri.fromFile(apkFile)
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.provider",
+            apkFile
+        )
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(intent)
     }
