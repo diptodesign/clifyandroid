@@ -17,15 +17,15 @@ class PatchesFragment : Fragment() {
     private var _binding: FragmentPatchesBinding? = null
     private val binding get() = _binding!!
 
-    private val patches = listOf(
-        PatchItem("ads", R.string.patch_ads, R.string.patch_ads_desc),
-        PatchItem("sponsorblock", R.string.patch_sponsorblock, R.string.patch_sponsorblock_desc),
-        PatchItem("background", R.string.patch_background_play, R.string.patch_background_play_desc),
-        PatchItem("quality", R.string.patch_remember_quality, R.string.patch_remember_quality_desc),
-        PatchItem("autoplay", R.string.patch_disable_autoplay, R.string.patch_disable_autoplay_desc, defaultEnabled = false),
-        PatchItem("shorts", R.string.patch_hide_shorts, R.string.patch_hide_shorts_desc, defaultEnabled = false),
-        PatchItem("dislike", R.string.patch_return_youtube_dislike, R.string.patch_return_youtube_dislike_desc),
-        PatchItem("minimal", R.string.patch_minimal_layout, R.string.patch_minimal_layout_desc, defaultEnabled = false),
+    private val features = listOf(
+        PatchItem("ads", R.string.patch_ads, R.string.patch_ads_desc, builtIn = true),
+        PatchItem("sponsorblock", R.string.patch_sponsorblock, R.string.patch_sponsorblock_desc, builtIn = true),
+        PatchItem("background", R.string.patch_background_play, R.string.patch_background_play_desc, builtIn = true),
+        PatchItem("quality", R.string.patch_remember_quality, R.string.patch_remember_quality_desc, builtIn = true),
+        PatchItem("autoplay", R.string.patch_disable_autoplay, R.string.patch_disable_autoplay_desc, defaultEnabled = true, builtIn = true),
+        PatchItem("shorts", R.string.patch_hide_shorts, R.string.patch_hide_shorts_desc, defaultEnabled = true, builtIn = true),
+        PatchItem("dislike", R.string.patch_return_youtube_dislike, R.string.patch_return_youtube_dislike_desc, builtIn = true),
+        PatchItem("minimal", R.string.patch_minimal_layout, R.string.patch_minimal_layout_desc, builtIn = true),
     )
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -35,23 +35,24 @@ class PatchesFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        populatePatches()
+        populateFeatures()
     }
 
-    private fun populatePatches() {
+    private fun populateFeatures() {
         val container = binding.patchesList
         container.removeAllViews()
 
-        for (patch in patches) {
+        for (feature in features) {
             val card = LayoutInflater.from(requireContext())
                 .inflate(R.layout.item_patch, container, false) as MaterialCardView
 
-            card.findViewById<TextView>(R.id.patchTitle).setText(patch.titleRes)
-            card.findViewById<TextView>(R.id.patchDesc).setText(patch.descRes)
+            card.findViewById<TextView>(R.id.patchTitle).setText(feature.titleRes)
+            card.findViewById<TextView>(R.id.patchDesc).setText(feature.descRes)
 
             val toggle = card.findViewById<MaterialSwitch>(R.id.patchToggle)
-            toggle.isChecked = patch.enabled
-            toggle.setOnCheckedChangeListener { _, isChecked -> patch.enabled = isChecked }
+            toggle.isChecked = feature.enabled
+            toggle.isEnabled = false
+            toggle.alpha = 0.5f
 
             container.addView(card)
         }

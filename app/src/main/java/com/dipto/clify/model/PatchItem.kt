@@ -5,5 +5,6 @@ data class PatchItem(
     val titleRes: Int,
     val descRes: Int,
     val defaultEnabled: Boolean = true,
-    var enabled: Boolean = defaultEnabled
+    var enabled: Boolean = defaultEnabled,
+    val builtIn: Boolean = true
 )

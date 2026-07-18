@@ -2,7 +2,6 @@ package com.dipto.clify.patcher
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Environment
 import android.util.Log
 import androidx.core.content.FileProvider
@@ -24,100 +23,77 @@ class PatchEngine(private val context: Context) {
     }
 
     private val client = OkHttpClient.Builder()
-        .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(300, TimeUnit.SECONDS)
+        .connectTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
         .followRedirects(true)
         .build()
 
     private val downloadsDir: File
         get() = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "clify").also { it.mkdirs() }
 
-    companion object {
-        private const val TAG = "PatchEngine"
-    }
-
     suspend fun startPatching(callback: ProgressCallback) = withContext(Dispatchers.IO) {
         try {
-            callback.onProgress("Finding ReVanced Manager…", 5)
-            val releaseInfo = fetchLatestRelease(callback) ?: run {
-                callback.onError("Could not find ReVanced Manager. Check your connection.")
+            callback.onProgress("Checking latest NewPipe…", 5)
+            val release = fetchLatestRelease(callback) ?: run {
+                callback.onError("Could not find NewPipe release.")
                 return@withContext
             }
 
-            callback.onProgress("Downloading ReVanced Manager…", 15)
-            val outputFile = File(downloadsDir, releaseInfo.first)
-            downloadFile(releaseInfo.second, outputFile, callback, basePercent = 15, maxPercent = 95)
+            callback.onProgress("Downloading NewPipe ${release.first}…", 15)
+            val outputFile = File(downloadsDir, release.first)
+            downloadFile(release.second, outputFile, callback)
 
             if (outputFile.length() < 1_000_000) {
-                callback.onError("Downloaded file is too small. May be corrupted.")
+                callback.onError("Download failed — file too small.")
                 outputFile.delete()
                 return@withContext
             }
 
-            callback.onProgress("Download complete! Opening installer…", 100)
+            callback.onProgress("Download complete!", 100)
             callback.onComplete(outputFile)
         } catch (e: Exception) {
             Log.e(TAG, "Failed", e)
-            callback.onError(e.message ?: "Unknown error occurred")
+            callback.onError(e.message ?: "Unknown error")
         }
     }
 
     private fun fetchLatestRelease(callback: ProgressCallback): Pair<String, String>? {
-        val repos = listOf(
-            "https://api.github.com/repos/ReVanced/revanced-manager/releases/latest",
-            "https://api.github.com/repos/ReVanced/revanced-manager/releases"
-        )
+        try {
+            val request = Request.Builder()
+                .url("https://api.github.com/repos/TeamNewPipe/NewPipe/releases/latest")
+                .header("Accept", "application/vnd.github+json")
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return null
 
-        for (url in repos) {
-            try {
-                callback.onProgress("Checking ReVanced releases…", 5)
-                val request = Request.Builder()
-                    .url(url)
-                    .header("Accept", "application/vnd.github+json")
-                    .build()
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) continue
+            val body = response.body?.string() ?: return null
+            val json = JSONObject(body)
+            val assets = json.getJSONArray("assets")
 
-                val body = response.body?.string() ?: continue
-                val jsonArray = if (body.trimStart().startsWith("[")) {
-                    JSONObject(body.substringAfter("[").substringBefore("]").let { "[$it]" })
-                    org.json.JSONArray(body)
-                } else {
-                    org.json.JSONArray("[$body]")
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                val name = asset.getString("name")
+                if (name.endsWith(".apk")) {
+                    val url = asset.getString("browser_download_url")
+                    val sizeMb = asset.getLong("size") / 1_048_576
+                    callback.onProgress("Found NewPipe ($sizeMb MB)", 10)
+                    return Pair(name, url)
                 }
-
-                val json = if (jsonArray.length() > 0) jsonArray.getJSONObject(0) else continue
-                val assets = json.getJSONArray("assets")
-
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.getString("name")
-                    if (name.endsWith(".apk") && !name.contains(".asc")) {
-                        val downloadUrl = asset.getString("browser_download_url")
-                        val sizeMb = asset.getLong("size") / 1_048_576
-                        callback.onProgress("Found $name ($sizeMb MB)", 8)
-                        return Pair(name, downloadUrl)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed: $url", e)
-                continue
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch release", e)
         }
         return null
     }
 
-    private fun downloadFile(url: String, outputFile: File, callback: ProgressCallback, basePercent: Int, maxPercent: Int) {
+    private fun downloadFile(url: String, outputFile: File, callback: ProgressCallback) {
         if (outputFile.exists()) outputFile.delete()
 
         val request = Request.Builder().url(url).build()
         val response = client.newCall(request).execute()
+        if (!response.isSuccessful) throw Exception("Download failed: HTTP ${response.code}")
 
-        if (!response.isSuccessful) {
-            throw Exception("Download failed: HTTP ${response.code}")
-        }
-
-        val body = response.body ?: throw Exception("Empty response body")
+        val body = response.body ?: throw Exception("Empty response")
         val totalSize = body.contentLength()
         var downloaded = 0L
         val startTime = System.currentTimeMillis()
@@ -131,7 +107,7 @@ class PatchEngine(private val context: Context) {
                     downloaded += bytesRead
                     if (totalSize > 0) {
                         val progress = (downloaded * 100) / totalSize
-                        val percent = basePercent + (progress * (maxPercent - basePercent) / 100).toInt()
+                        val percent = 15 + (progress * 85 / 100).toInt()
                         val mb = downloaded / 1_048_576
                         val totalMb = totalSize / 1_048_576
                         val elapsed = (System.currentTimeMillis() - startTime) / 1000
@@ -155,5 +131,9 @@ class PatchEngine(private val context: Context) {
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         context.startActivity(intent)
+    }
+
+    companion object {
+        private const val TAG = "PatchEngine"
     }
 }
