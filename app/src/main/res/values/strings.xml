@@ -2,9 +2,9 @@
 <resources>
     <string name="app_name">Clify</string>
     <string name="tagline">YouTube Ad Blocker</string>
-    <string name="patch_youtube">Patch YouTube</string>
+    <string name="patch_youtube">Install ReVanced Manager</string>
     <string name="downloading">Downloading…</string>
-    <string name="patching">Patching…</string>
+    <string name="patching">Downloading…</string>
     <string name="installing">Installing…</string>
     <string name="done">Done!</string>
     <string name="failed">Failed</string>
@@ -12,13 +12,13 @@
     <string name="settings">Settings</string>
     <string name="about">About</string>
     <string name="version">Version %1$s</string>
-    <string name="status_idle">Ready to patch</string>
+    <string name="status_idle">Tap to install ReVanced Manager</string>
     <string name="status_downloading_patches">Downloading patches…</string>
     <string name="status_downloading_apk">Downloading YouTube APK…</string>
     <string name="status_patching">Applying patches…</string>
     <string name="status_signing">Signing APK…</string>
     <string name="status_installing">Installing…</string>
-    <string name="status_complete">YouTube patched successfully!</string>
+    <string name="status_complete">ReVanced Manager installed! Open it to patch YouTube.</string>
     <string name="status_error">Error: %1$s</string>
     <string name="patch_ads">Remove Ads</string>
     <string name="patch_ads_desc">Remove all video ads, banners, and sponsored content</string>
@@ -36,6 +36,6 @@
     <string name="patch_return_youtube_dislike_desc">Show dislike counts on videos</string>
     <string name="patch_minimal_layout">Minimal Layout</string>
     <string name="patch_minimal_layout_desc">Clean, minimal YouTube interface</string>
-    <string name="warning_root">Root not required. This app patches YouTube without root access.</string>
-    <string name="credit_revanced">Powered by ReVanced Patches (GPL-3.0)</string>
+    <string name="warning_root">Root not required. Patches latest YouTube on your device.</string>
+    <string name="credit_revanced">Powered by ReVanced (GPL-3.0)</string>
 </resources>

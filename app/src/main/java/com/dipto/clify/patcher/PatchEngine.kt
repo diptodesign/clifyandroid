@@ -34,84 +34,75 @@ class PatchEngine(private val context: Context) {
 
     companion object {
         private const val TAG = "PatchEngine"
-
-        private val APK_SOURCES = listOf(
-            Triple(
-                "https://api.github.com/repos/SinAble716/RVX_inotia00_patched/releases/latest",
-                "youtube-rvx",
-                "ReVanced Extended (Ad-free YouTube)"
-            ),
-            Triple(
-                "https://api.github.com/repos/inotia00/revanced-patches/releases/latest",
-                ".apk",
-                "ReVanced Patches"
-            )
-        )
     }
 
     suspend fun startPatching(callback: ProgressCallback) = withContext(Dispatchers.IO) {
         try {
-            var apkUrl: String? = null
-            var sourceName = ""
-
-            for ((apiUrl, nameFilter, displayName) in APK_SOURCES) {
-                callback.onProgress("Checking $displayName…", 5)
-                val result = findApkUrl(apiUrl, nameFilter, callback)
-                if (result != null) {
-                    apkUrl = result.first
-                    sourceName = result.second
-                    callback.onProgress("Found: $sourceName", 10)
-                    break
-                }
-            }
-
-            if (apkUrl == null) {
-                callback.onError("Could not find a patched APK. Please try again later.")
+            callback.onProgress("Finding ReVanced Manager…", 5)
+            val releaseInfo = fetchLatestRelease(callback) ?: run {
+                callback.onError("Could not find ReVanced Manager. Check your connection.")
                 return@withContext
             }
 
-            val outputFile = File(downloadsDir, "clify-youtube-$sourceName.apk")
-            downloadFile(apkUrl, outputFile, callback, basePercent = 10, maxPercent = 90)
+            callback.onProgress("Downloading ReVanced Manager…", 15)
+            val outputFile = File(downloadsDir, releaseInfo.first)
+            downloadFile(releaseInfo.second, outputFile, callback, basePercent = 15, maxPercent = 95)
 
-            if (outputFile.length() < 10_000_000) {
-                callback.onError("Downloaded file is too small (${outputFile.length()} bytes). May be corrupted.")
+            if (outputFile.length() < 1_000_000) {
+                callback.onError("Downloaded file is too small. May be corrupted.")
                 outputFile.delete()
                 return@withContext
             }
 
-            callback.onProgress("Download complete! Preparing to install…", 95)
+            callback.onProgress("Download complete! Opening installer…", 100)
             callback.onComplete(outputFile)
         } catch (e: Exception) {
-            Log.e(TAG, "Patching failed", e)
+            Log.e(TAG, "Failed", e)
             callback.onError(e.message ?: "Unknown error occurred")
         }
     }
 
-    private fun findApkUrl(apiUrl: String, nameFilter: String, callback: ProgressCallback): Pair<String, String>? {
-        try {
-            val request = Request.Builder()
-                .url(apiUrl)
-                .header("Accept", "application/vnd.github+json")
-                .build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) return null
+    private fun fetchLatestRelease(callback: ProgressCallback): Pair<String, String>? {
+        val repos = listOf(
+            "https://api.github.com/repos/ReVanced/revanced-manager/releases/latest",
+            "https://api.github.com/repos/ReVanced/revanced-manager/releases"
+        )
 
-            val body = response.body?.string() ?: return null
-            val json = JSONObject(body)
-            val assets = json.getJSONArray("assets")
+        for (url in repos) {
+            try {
+                callback.onProgress("Checking ReVanced releases…", 5)
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Accept", "application/vnd.github+json")
+                    .build()
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful) continue
 
-            for (i in 0 until assets.length()) {
-                val asset = assets.getJSONObject(i)
-                val name = asset.getString("name")
-                if (name.endsWith(".apk") && name.contains(nameFilter, ignoreCase = true)) {
-                    val url = asset.getString("browser_download_url")
-                    val sizeMb = asset.getLong("size") / 1_048_576
-                    callback.onProgress("Found $name ($sizeMb MB)", 8)
-                    return Pair(url, name.replace(".apk", ""))
+                val body = response.body?.string() ?: continue
+                val jsonArray = if (body.trimStart().startsWith("[")) {
+                    JSONObject(body.substringAfter("[").substringBefore("]").let { "[$it]" })
+                    org.json.JSONArray(body)
+                } else {
+                    org.json.JSONArray("[$body]")
                 }
+
+                val json = if (jsonArray.length() > 0) jsonArray.getJSONObject(0) else continue
+                val assets = json.getJSONArray("assets")
+
+                for (i in 0 until assets.length()) {
+                    val asset = assets.getJSONObject(i)
+                    val name = asset.getString("name")
+                    if (name.endsWith(".apk") && !name.contains(".asc")) {
+                        val downloadUrl = asset.getString("browser_download_url")
+                        val sizeMb = asset.getLong("size") / 1_048_576
+                        callback.onProgress("Found $name ($sizeMb MB)", 8)
+                        return Pair(name, downloadUrl)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed: $url", e)
+                continue
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to fetch from $apiUrl", e)
         }
         return null
     }
