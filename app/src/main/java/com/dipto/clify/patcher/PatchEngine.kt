@@ -5,9 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import android.util.Log
-import com.dipto.clify.model.PatchItem
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -25,73 +22,98 @@ class PatchEngine(private val context: Context) {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(60, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(300, TimeUnit.SECONDS)
         .followRedirects(true)
         .build()
 
     private val downloadsDir: File
         get() = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), "clify").also { it.mkdirs() }
 
-    private val GITHUB_RELEASES_URL = "https://api.github.com/repos/inotia00/ReVanced_Patches/releases/latest"
-    private val GITHUB_REVANCED_URL = "https://api.github.com/repos/ReVanced/revanced-manager/releases/latest"
+    companion object {
+        private const val TAG = "PatchEngine"
 
-    suspend fun startPatching(enabledPatches: List<PatchItem>, callback: ProgressCallback) = withContext(Dispatchers.IO) {
+        private val APK_SOURCES = listOf(
+            Triple(
+                "https://api.github.com/repos/SinAble716/RVX_inotia00_patched/releases/latest",
+                "youtube-rvx",
+                "ReVanced Extended (Ad-free YouTube)"
+            ),
+            Triple(
+                "https://api.github.com/repos/inotia00/revanced-patches/releases/latest",
+                ".apk",
+                "ReVanced Patches"
+            )
+        )
+    }
+
+    suspend fun startPatching(callback: ProgressCallback) = withContext(Dispatchers.IO) {
         try {
-            callback.onProgress("Fetching latest release info…", 5)
-            val apkUrl = fetchApkDownloadUrl(callback)
+            var apkUrl: String? = null
+            var sourceName = ""
+
+            for ((apiUrl, nameFilter, displayName) in APK_SOURCES) {
+                callback.onProgress("Checking $displayName…", 5)
+                val result = findApkUrl(apiUrl, nameFilter, callback)
+                if (result != null) {
+                    apkUrl = result.first
+                    sourceName = result.second
+                    callback.onProgress("Found: $sourceName", 10)
+                    break
+                }
+            }
+
             if (apkUrl == null) {
-                callback.onError("Could not find a download link. Please try again later.")
+                callback.onError("Could not find a patched APK. Please try again later.")
                 return@withContext
             }
 
-            callback.onProgress("Downloading patched APK…", 15)
-            val apkFile = downloadApk(apkUrl, callback)
+            val outputFile = File(downloadsDir, "clify-youtube-$sourceName.apk")
+            downloadFile(apkUrl, outputFile, callback, basePercent = 10, maxPercent = 90)
 
-            callback.onProgress("Verifying download…", 90)
-            if (apkFile.length() < 1_000_000) {
-                callback.onError("Downloaded file is too small. May be corrupted.")
+            if (outputFile.length() < 10_000_000) {
+                callback.onError("Downloaded file is too small (${outputFile.length()} bytes). May be corrupted.")
+                outputFile.delete()
                 return@withContext
             }
 
-            callback.onProgress("Download complete!", 100)
-            callback.onComplete(apkFile)
+            callback.onProgress("Download complete! Preparing to install…", 95)
+            callback.onComplete(outputFile)
         } catch (e: Exception) {
-            Log.e("PatchEngine", "Patching failed", e)
+            Log.e(TAG, "Patching failed", e)
             callback.onError(e.message ?: "Unknown error occurred")
         }
     }
 
-    private fun fetchApkDownloadUrl(callback: ProgressCallback): String? {
-        val urls = listOf(GITHUB_RELEASES_URL, GITHUB_REVANCED_URL)
+    private fun findApkUrl(apiUrl: String, nameFilter: String, callback: ProgressCallback): Pair<String, String>? {
+        try {
+            val request = Request.Builder()
+                .url(apiUrl)
+                .header("Accept", "application/vnd.github+json")
+                .build()
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) return null
 
-        for (url in urls) {
-            try {
-                callback.onProgress("Checking $url…", 5)
-                val request = Request.Builder().url(url).header("Accept", "application/vnd.github+json").build()
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) continue
+            val body = response.body?.string() ?: return null
+            val json = JSONObject(body)
+            val assets = json.getJSONArray("assets")
 
-                val body = response.body?.string() ?: continue
-                val json = JSONObject(body)
-                val assets = json.getJSONArray("assets")
-
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.getString("name")
-                    if (name.endsWith(".apk") && (name.contains("revanced") || name.contains("patched") || name.contains("youtube"))) {
-                        return asset.getString("browser_download_url")
-                    }
+            for (i in 0 until assets.length()) {
+                val asset = assets.getJSONObject(i)
+                val name = asset.getString("name")
+                if (name.endsWith(".apk") && name.contains(nameFilter, ignoreCase = true)) {
+                    val url = asset.getString("browser_download_url")
+                    val sizeMb = asset.getLong("size") / 1_048_576
+                    callback.onProgress("Found $name ($sizeMb MB)", 8)
+                    return Pair(url, name.replace(".apk", ""))
                 }
-            } catch (e: Exception) {
-                Log.w("PatchEngine", "Failed to fetch from $url", e)
-                continue
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch from $apiUrl", e)
         }
         return null
     }
 
-    private fun downloadApk(url: String, callback: ProgressCallback): File {
-        val outputFile = File(downloadsDir, "clify-youtube.apk")
+    private fun downloadFile(url: String, outputFile: File, callback: ProgressCallback, basePercent: Int, maxPercent: Int) {
         if (outputFile.exists()) outputFile.delete()
 
         val request = Request.Builder().url(url).build()
@@ -104,23 +126,27 @@ class PatchEngine(private val context: Context) {
         val body = response.body ?: throw Exception("Empty response body")
         val totalSize = body.contentLength()
         var downloaded = 0L
+        val startTime = System.currentTimeMillis()
 
         FileOutputStream(outputFile).use { fos ->
             body.byteStream().use { input ->
-                val buffer = ByteArray(8192)
+                val buffer = ByteArray(16384)
                 var bytesRead: Int
                 while (input.read(buffer).also { bytesRead = it } != -1) {
                     fos.write(buffer, 0, bytesRead)
                     downloaded += bytesRead
                     if (totalSize > 0) {
                         val progress = (downloaded * 100) / totalSize
-                        val percent = 15 + (progress * 75 / 100).toInt()
-                        callback.onProgress("Downloading… ${(downloaded / 1048576)}MB / ${(totalSize / 1048576)}MB", percent)
+                        val percent = basePercent + (progress * (maxPercent - basePercent) / 100).toInt()
+                        val mb = downloaded / 1_048_576
+                        val totalMb = totalSize / 1_048_576
+                        val elapsed = (System.currentTimeMillis() - startTime) / 1000
+                        val speed = if (elapsed > 0) (downloaded / elapsed / 1_048_576) else 0
+                        callback.onProgress("Downloading… ${mb}MB / ${totalMb}MB (${speed}MB/s)", percent)
                     }
                 }
             }
         }
-        return outputFile
     }
 
     fun installApk(apkFile: File) {
