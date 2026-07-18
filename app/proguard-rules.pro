@@ -1,0 +1,3 @@
+-dontwarn javax.annotation.**
+-keep class com.dipto.clify.** { *; }
+-keep class app.revanced.** { *; }
